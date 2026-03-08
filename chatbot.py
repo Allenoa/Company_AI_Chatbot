@@ -1,37 +1,46 @@
 import os
+import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+
+# 문서 로드 및 분할
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+
+# 벡터 저장소
 from langchain_community.vectorstores import FAISS
+
+# 체인 및 프롬프트
 from langchain_classic.chains import RetrievalQA
 from langchain_core.prompts import PromptTemplate
 
-# 환경 변수 로드
+# 구글 제미나이
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_core.documents import Document
+
+# .env 파일 로드
 load_dotenv()
 
 class CompanyChatbot:
-    def __init__(self, urls=None, index_path="faiss_index_gemini"):
-        # [수정] API 키가 잘 로드되었는지 확인하는 디버깅 코드
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            # .env에서 못 찾으면 여기서 직접 문자열로 넣어서 테스트 해보세요
-            # api_key = "AIzaSy..." 
-            raise ValueError("❌ .env 파일에서 OPENAI_API_KEY 찾을 수 없습니다! 파일 위치나 내용을 확인해주세요.")
-        
-        print(f"[System] API Key 확인됨: {api_key[:5]}*****") # 키 앞부분만 출력해서 확인
-
+    def __init__(self, urls=None, index_path="faiss_index_v2"):
         self.index_path = index_path
         
-        # [수정] 모델 생성 시 api_key를 명시적으로 넣어줌 (가장 확실한 방법)
+        # [수정 1] API 키를 가져와서 클래스 변수(self.api_key)에 저장
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            # .env가 안 먹힐 경우를 대비해 최후의 수단으로 직접 입력 가능 (테스트용)
+            # self.api_key = "AIzaSy..." 
+            raise ValueError("❌ OPENAI_API_KEY를 찾을 수 없습니다. .env 파일을 확인해주세요.")
+
+        # 모델 설정 (gemini-embedding-001 사용)
         self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            google_api_key=api_key
+            model="models/gemini-embedding-001", 
+            google_api_key=self.api_key  # 저장된 키 사용
         )
         
-        # 기존 DB가 있으면 로드, 없으면 새로 크롤링
+        # DB 로드 또는 새로 생성
         if os.path.exists(index_path):
-            print(f"[Info] 저장된 데이터베이스('{index_path}')를 불러옵니다.")
+            print(f"[Info] 저장된 DB('{index_path}')를 불러옵니다.")
             self.vector_db = FAISS.load_local(
                 index_path, 
                 self.embeddings, 
@@ -40,43 +49,80 @@ class CompanyChatbot:
         else:
             if not urls:
                 raise ValueError("학습할 URL이 필요합니다.")
-            print(f"[Info] 새로운 데이터를 학습합니다...")
-            self.vector_db = self._ingest_data(urls)
+            print(f"[Info] 이미지와 링크를 포함하여 데이터를 학습합니다...")
+            self.vector_db = self._ingest_data_with_images(urls)
             
         self.qa_chain = self._create_chain()
 
-    def _ingest_data(self, urls):
-        # A. 데이터 로드
-        loader = WebBaseLoader(urls)
-        documents = loader.load()
+    def _ingest_data_with_images(self, urls):
+        """
+        데이터 수집 함수: 텍스트 + 이미지 + URL 링크 주입
+        """
+        documents = []
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         
-        # B. 텍스트 분할 (청크 단위로 쪼개기)
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-        texts = text_splitter.split_documents(documents)
+        for url in urls:
+            try:
+                print(f"Scraping: {url}")
+                response = requests.get(url, headers=headers)
+                response.encoding = response.apparent_encoding 
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # 1. 텍스트 추출
+                text = soup.get_text(separator=' ', strip=True)
+                
+                # 2. 이미지 추출
+                image_url = ""
+                og_image = soup.find("meta", property="og:image")
+                if og_image:
+                    image_url = og_image["content"]
+                else:
+                    first_img = soup.find("img")
+                    if first_img and first_img.get("src"):
+                        src = first_img["src"]
+                        if src.startswith("http"):
+                            image_url = src
+                        else:
+                            from urllib.parse import urljoin
+                            image_url = urljoin(url, src)
+
+                # 3. 문서 생성
+                doc = Document(
+                    page_content=text,
+                    metadata={"source": url, "image": image_url}
+                )
+                documents.append(doc)
+                
+            except Exception as e:
+                print(f"Error scraping {url}: {e}")
+
+        # 빈 데이터 방지
+        if not documents:
+            documents.append(Document(page_content="데이터 없음", metadata={"source": "", "image": ""}))
+
+        # 4. 텍스트 분할 (Chunking)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        split_docs = text_splitter.split_documents(documents)
         
-        # C. 임베딩 및 벡터 DB 생성
-        vector_db = FAISS.from_documents(texts, self.embeddings)
-        
-        # D. 로컬에 저장 (다음에 재사용하기 위함)
+        # [핵심 수정!] 잘라진 모든 조각마다 URL 정보를 텍스트 끝에 추가
+        for split_doc in split_docs:
+            source_url = split_doc.metadata.get("source", "")
+            # AI가 읽을 텍스트에 URL을 직접 써줍니다.
+            split_doc.page_content += f"\n\n[이 정보의 출처 링크: {source_url}]"
+
+        # 5. 저장
+        vector_db = FAISS.from_documents(split_docs, self.embeddings)
         vector_db.save_local(self.index_path)
-        print(f"[Info] 벡터 DB가 '{self.index_path}'에 저장되었습니다.")
-        
         return vector_db
 
     def _create_chain(self):
-        # 검색기 설정 (유사도 높은 상위 3개 문맥 참조)
-        retriever = self.vector_db.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": 3}
-        )
+        retriever = self.vector_db.as_retriever(search_kwargs={"k": 2})
 
-        # 시스템 프롬프트 (가드레일 핵심)
         template = """
-        당신은 회사 정보를 안내하는 AI 챗봇입니다.
-        아래의 [Context]에 있는 정보만 사용하여 질문에 답하십시오.
+        당신은 회사 안내 AI입니다.
+        [Context]에 있는 내용으로만 답변하세요.
         
         [Context]:
         {context}
@@ -85,33 +131,44 @@ class CompanyChatbot:
         {question}
 
         [Rules]:
-        1. 반드시 [Context]에 기반한 사실만 답변하세요.
-        2. [Context]에 없는 내용이거나, 회사와 무관한 질문(날씨, 연예인, 잡담 등)이라면,
-           절대로 임의로 지어내지 말고, 정확히 아래 문구만 출력하세요:
-           "해당 질문은 회사와 관련이 없습니다."
-        3. 답변은 한국어로 정중하게 작성하세요.
+        1. 답변은 친절하게 한국어로 작성하세요.
+        2. [Context] 내용 중에 "[이 정보의 출처 링크: ...]" 부분이 있다면, 
+           답변할 때 "자세한 내용은 아래 링크를 확인해주세요: (링크)" 형태로 언급해주세요.
+        3. 만약 문맥에서 답을 찾을 수 없으면 "죄송합니다, 해당 정보는 홈페이지에서 찾을 수 없습니다."라고 하세요.
 
         [Answer]:
         """
+        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
         
-        prompt = PromptTemplate(
-            template=template, 
-            input_variables=["context", "question"]
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash", 
+            temperature=0, 
+            google_api_key=self.api_key
         )
 
-        # 체인 생성 (gpt-4o 또는 gpt-3.5-turbo 사용)
-        # temperature=0 : 창의성을 제거하여 팩트 기반 답변 강화
         chain = RetrievalQA.from_chain_type(
-            llm=ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, google_api_key=os.getenv("OPENAI_API_KEY")),
+            llm=llm,
             chain_type="stuff",
             retriever=retriever,
-            chain_type_kwargs={"prompt": prompt}
+            chain_type_kwargs={"prompt": prompt},
+            return_source_documents=True 
         )
         
         return chain
 
     def ask(self, query):
         try:
-            return self.qa_chain.run(query)
+            response = self.qa_chain.invoke(query)
+            
+            answer = response['result']
+            source_docs = response['source_documents']
+            
+            best_doc_meta = source_docs[0].metadata if source_docs else {}
+            
+            return {
+                "answer": answer,
+                "image": best_doc_meta.get("image", ""),
+                "link": best_doc_meta.get("source", "")
+            }
         except Exception as e:
-            return f"오류가 발생했습니다: {str(e)}"
+            return {"answer": f"오류 발생: {str(e)}", "image": "", "link": ""}

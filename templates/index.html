@@ -1,102 +1,677 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>Company AI Chatbot</title>
-    <style>
-        body { font-family: 'Suit', sans-serif; background-color: #f0f2f5; margin: 0; display: flex; justify-content: center; height: 100vh; }
-        .chat-container { width: 100%; max-width: 800px; background: white; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.1); height: 100vh; }
-        
-        /* 헤더 */
-        .header { padding: 20px; background: #ffffff; border-bottom: 1px solid #ddd; font-weight: bold; font-size: 1.2rem; display: flex; align-items: center; color: #333; }
-        .header span { color: #4285f4; margin-right: 8px; } /* Gemini Blue */
+<meta charset="UTF-8" />
+<title>Company AI Chatbot</title>
 
-        /* 채팅 영역 */
-        .chat-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #fff; }
-        
-        /* 말풍선 공통 */
-        .message { max-width: 80%; padding: 12px 18px; border-radius: 18px; font-size: 1rem; line-height: 1.5; position: relative; word-wrap: break-word; }
-        
-        /* 유저 말풍선 (오른쪽) */
-        .user-message { align-self: flex-end; background-color: #4285f4; color: white; border-bottom-right-radius: 4px; }
-        
-        /* 봇 말풍선 (왼쪽) */
-        .bot-message { align-self: flex-start; background-color: #f1f3f4; color: #333; border-bottom-left-radius: 4px; }
-        
-        /* 입력창 영역 */
-        .input-area { padding: 20px; background: white; border-top: 1px solid #eee; display: flex; gap: 10px; }
-        input { flex: 1; padding: 15px; border: 1px solid #ddd; border-radius: 30px; font-size: 1rem; outline: none; transition: 0.2s; }
-        input:focus { border-color: #4285f4; box-shadow: 0 0 5px rgba(66, 133, 244, 0.3); }
-        button { padding: 10px 25px; background: #4285f4; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #3367d6; }
-        button:disabled { background: #ccc; }
+<style>
+  :root{
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --line: #e9edf2;
+    --muted: #6b7280;
+    --text: #0f172a;
+    --chip: #f3f4f6;
+    --shadow: 0 12px 30px rgba(0,0,0,.08);
+    --radius: 16px;
+    --user: #4285f4;
+    --bot: #f3f4f6;
+  }
 
-        /* 로딩 애니메이션 */
-        .loading { font-size: 0.8rem; color: #888; margin-left: 10px; display: none; }
-    </style>
+  *{ box-sizing: border-box; }
+
+  body{
+    font-family: 'Suit', sans-serif;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display:flex;
+    justify-content:center;
+  }
+
+  .page{
+    width: 100%;
+    max-width: 1920px;
+    height: 100vh;
+    display:flex;
+    flex-direction: column;
+    background: var(--panel);
+  }
+
+  /* 상단바 */
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content: center;
+    position: relative;
+    background: #fff;
+    padding: 13px 0;
+  }
+
+  .logo{
+    max-width: 240px;
+    width: 100%;
+    height: auto;
+    display:block;
+    cursor: pointer;
+  }
+
+  /* 우측 상단 메뉴 버튼 */
+  .menu-btn{
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: #fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor: pointer;
+    transition: .15s;
+    z-index: 30;
+  }
+  .menu-btn:hover{ background:#f8fafc; }
+  .menu-btn:active{ transform: scale(.98); }
+
+  .menu-btn .bars{ width: 18px; height: 12px; position: relative; }
+  .menu-btn .bars span{
+    position:absolute; left:0; width:100%; height:2px;
+    background:#111827; border-radius:2px; transition:.2s;
+  }
+  .menu-btn .bars span:nth-child(1){ top:0; }
+  .menu-btn .bars span:nth-child(2){ top:5px; }
+  .menu-btn .bars span:nth-child(3){ top:10px; }
+  .menu-btn.is-open .bars span:nth-child(1){ top:5px; transform: rotate(45deg); }
+  .menu-btn.is-open .bars span:nth-child(2){ opacity: 0; }
+  .menu-btn.is-open .bars span:nth-child(3){ top:5px; transform: rotate(-45deg); }
+
+  /* 랜딩(첫 화면) */
+  .landing{
+    flex: 1;
+    display:flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    margin-top: 2%;
+    margin-bottom: 5%;
+    padding: 0px 16px 40px 16px;
+    background:#fff;
+  }
+
+  .landing-title{
+    font-size: 34px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-align:center;
+  }
+
+  .landing-sub{
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    text-align:center;
+  }
+
+  .landing-composer{
+    width: 100%;
+    max-width: 820px;
+    display:flex;
+    gap: 10px;
+    align-items: flex-end;
+    margin-top: 10px;
+  }
+
+  .landing textarea{
+    flex:1;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    font-size: 15px;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    line-height: 1.5;
+    font-family: inherit;
+    height: 55px; 
+    max-height: 180px;    
+    background:#fff;
+    transition: .15s;
+  }
+
+  .landing textarea:focus{
+    border-color: #c7d2fe;
+    box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+  }
+
+  .send-btn{
+    width: 52px;
+    height: 52px;
+    border: 1px solid #4285f4;
+    border-radius: 999px;
+    background: #4285f4;
+    cursor: pointer;
+    transition: .15s;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .send-btn svg{ width:20px; height:20px; }
+  .send-btn:hover{ background:#1d4ed8; }
+  .send-btn:disabled{
+    background:#cbd5e1;
+    border-color:#cbd5e1;
+    cursor:not-allowed;
+  }
+
+  .chips{
+    width: 100%;
+    max-width: 820px;
+    display:flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content:center;
+    margin-top: 8px;
+  }
+  .chip{
+    border: 1px solid var(--line);
+    background: #fff;
+    color: #111827;
+    border-radius: 999px;
+    padding: 10px 14px;
+    font-weight: 800;
+    cursor:pointer;
+    transition:.15s;
+  }
+  .chip:hover{ background:#f8fafc; }
+
+  /* 채팅 화면 (처음엔 숨김) */
+  .chat-mode{ display:none; flex:1; flex-direction:column; background:#fff; }
+
+  .chat-area{
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 12px 8px 12px;
+    background: #fff;
+  }
+
+  .messages{
+    width: 100%;
+    max-width: 820px;
+    margin: 0 auto;
+    display:flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 20px;
+  }
+
+  .row{ display:flex; gap: 10px; align-items:flex-end; }
+  .row.user{ justify-content: flex-end; }
+  .row.bot{ justify-content: flex-start; }
+
+  .bubble{
+    max-width: min(680px, 78vw);
+    padding: 12px 14px;
+    border-radius: 16px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border: 1px solid transparent;
+  }
+  .row.bot .bubble{
+    background: var(--bot);
+    color: #111827;
+    border-color: #eef2f7;
+    border-bottom-left-radius: 6px;
+  }
+  .row.user .bubble{
+    background: var(--user);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+  }
+
+  .hint{
+    width: 100%;
+    max-width: 820px;
+    margin: 14px auto 20px auto;
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .hint .pill{
+    background: var(--chip);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-weight: 700;
+    color:#111827;
+  }
+
+  .composer-wrap{
+    background: #fff;
+    padding: 14px 12px 18px 12px;
+  }
+  .composer{
+    width: 100%;
+    max-width: 820px;
+    margin: 0 auto;
+    display:flex;
+    gap: 10px;
+    align-items:flex-end;
+  }
+
+  /* 채팅 모드 textarea */
+  .chat-mode textarea{
+    flex:1;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    font-size: 15px;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    line-height: 1.5;
+    font-family: inherit;
+    height: 55px; 
+    max-height: 180px;    
+    background:#fff;
+    transition: .15s;
+  }
+  .chat-mode textarea:focus{
+    border-color: #c7d2fe;
+    box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+  }
+
+  .loading{
+    width: 100%;
+    max-width: 820px;
+    margin: 8px auto 0 auto;
+    color: var(--muted);
+    font-size: 12px;
+    display:none;
+  }
+
+  /* 사이드 메뉴 */
+  .side-overlay{
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: .2s;
+    z-index: 40;
+  }
+  .side-overlay.show{ opacity: 1; pointer-events: auto; }
+
+  .side-menu{
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 290px;
+    max-width: 82vw;
+    height: 100vh;
+    background: #fff;
+    border-left: 1px solid var(--line);
+    transform: translateX(100%);
+    transition: .25s ease;
+    z-index: 50;
+    display:flex;
+    flex-direction: column;
+  }
+  .side-menu.open{ transform: translateX(0); }
+
+  .side-menu__head{
+    height: 64px;
+    padding: 0 14px;
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+  .side-menu__title{ font-weight: 900; }
+  .side-menu__close{
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background:#fff;
+    cursor:pointer;
+  }
+  .side-menu__close:hover{ background:#f8fafc; }
+
+  .side-menu__list{
+    padding: 10px;
+    display:flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .side-menu__item{
+    width: 100%;
+    text-align: left;
+    padding: 12px 12px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: #fff;
+    cursor: pointer;
+    font-weight: 800;
+    color: #111827;
+    transition: .15s;
+  }
+  .side-menu__item:hover{
+    background:#f8fafc;
+    border-color:#eef2f7;
+  }
+  .side-menu__item small{
+    display:block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  @media (max-width: 520px){
+    /* .topbar{ height: 58px; } */
+    .logo{ max-width: 200px; }
+    .bubble{ max-width: 82vw; }
+    .landing-title{ font-size: 28px; }
+    .send-btn{ width: 48px; height: 48px; }
+    .landing textarea{ height: 48px; max-height:48px; }
+  }
+</style>
 </head>
-<body>
 
-<div class="chat-container">
-    <div class="header"><span>✨</span> 회사 AI 챗봇 시연</div>
-    <div class="chat-box" id="chat-box">
-        <div class="message bot-message">안녕하세요! 회사에 대해 무엇이든 물어보세요.</div>
+<body>
+  <div class="page">
+    <!-- 상단바 -->
+    <div class="topbar">
+      <img class="logo" src="/static/img/samajung-logo.png" alt="" onclick="location.href='/templates/index.html'" />
+
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="메뉴 열기">
+        <div class="bars" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+      </button>
     </div>
-    <div class="loading" id="loading">답변 생성 중...</div>
-    <div class="input-area">
-        <input type="text" id="user-input" placeholder="질문을 입력하세요..." onkeypress="if(event.keyCode==13) sendMessage()">
-        <button onclick="sendMessage()" id="send-btn">전송</button>
+
+    <!-- 첫 화면(랜딩) -->
+    <section class="landing" id="landing">
+      <h1 class="landing-title">무엇을 도와드릴까요?</h1>
+      <p class="landing-sub">회사/사업/기술/문의 등 무엇이든 물어보세요.</p>
+
+      <div class="landing-composer">
+        <textarea id="landing-input" rows="1" placeholder="무엇이든 물어보세요"></textarea>
+        <button class="send-btn" id="landing-send" type="button" aria-label="전송">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M3 11.5L21 3L12.5 21L11 13L3 11.5Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="chips">
+        <button class="chip" data-q="삼정ENR 회사 소개를 간단히 알려줘">회사 소개</button>
+        <button class="chip" data-q="Catalyst 사업/기술이 뭔지 설명해줘">Catalyst</button>
+        <button class="chip" data-q="주요 사업 분야와 강점은 뭐야?">사업 분야</button>
+        <button class="chip" data-q="Contact(문의) 방법 알려줘">문의하기</button>
+      </div>
+    </section>
+
+    <!-- 채팅 화면(처음엔 숨김) -->
+    <section class="chat-mode" id="chatMode">
+      <div class="chat-area" id="chatScroll">
+        <div class="hint">
+          <span class="pill">Tip</span>
+          Enter로 전송, Shift+Enter로 줄바꿈 할 수 있어요.
+        </div>
+
+        <div class="messages" id="chat-box"></div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="user-input" rows="1" placeholder="메시지를 입력하세요..."></textarea>
+
+          <button class="send-btn" onclick="sendMessage()" id="send-btn" aria-label="전송">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M3 11.5L21 3L12.5 21L11 13L3 11.5Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="loading" id="loading">답변 생성 중...</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 사이드 메뉴 -->
+  <div class="side-overlay" id="sideOverlay"></div>
+
+  <aside class="side-menu" id="sideMenu" aria-hidden="true">
+    <div class="side-menu__head">
+      <div class="side-menu__title">Menu</div>
+      <button class="side-menu__close" id="sideClose" type="button" aria-label="메뉴 닫기">✕</button>
     </div>
-</div>
+
+    <nav class="side-menu__list">
+      <button class="side-menu__item" type="button" data-link="main">Main <small>메인으로 이동</small></button>
+      <button class="side-menu__item" type="button" data-link="about">About <small>회사 소개</small></button>
+      <button class="side-menu__item" type="button" data-link="catalyst">Catalyst <small>주요 사업/기술</small></button>
+      <button class="side-menu__item" type="button" data-link="contact">Contact <small>문의하기</small></button>
+    </nav>
+  </aside>
 
 <script>
-    async function sendMessage() {
-        const inputField = document.getElementById('user-input');
-        const sendBtn = document.getElementById('send-btn');
-        const chatBox = document.getElementById('chat-box');
-        const loading = document.getElementById('loading');
-        
-        const question = inputField.value.trim();
-        if (!question) return;
+  // 모드 전환 
+  const landing = document.getElementById('landing');
+  const chatMode = document.getElementById('chatMode');
 
-        // 1. 유저 메시지 화면에 추가
-        appendMessage(question, 'user-message');
-        inputField.value = '';
-        inputField.disabled = true;
-        sendBtn.disabled = true;
-        loading.style.display = 'block';
+  function goChatMode() {
+    landing.style.display = 'none';
+    chatMode.style.display = 'flex';
+  }
 
-        try {
-            // 2. 서버로 전송 (Python)
-            const response = await fetch('/ask', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ msg: question })
-            });
-            const data = await response.json();
+  // 공통: textarea 자동 리사이즈 
+  function attachAutoResize(textarea, maxHeight) {
+    if (!textarea) return;
 
-            // 3. 봇 답변 화면에 추가
-            appendMessage(data.answer, 'bot-message');
-        } catch (error) {
-            appendMessage("오류가 발생했습니다.", 'bot-message');
-        }
+    const baseHeight = 55; // 기본 한줄 높이
 
-        // 상태 복구
-        inputField.disabled = false;
-        sendBtn.disabled = false;
-        loading.style.display = 'none';
-        inputField.focus();
+    textarea.addEventListener('input', function () {
+      this.style.height = 'auto';
+
+      if (this.value.trim() === '') {
+        this.style.height = baseHeight + 'px';
+        this.style.overflowY = 'hidden';
+        return;
+      }
+
+      if (this.scrollHeight > maxHeight) {
+        this.style.height = maxHeight + 'px';
+        this.style.overflowY = 'auto';
+      } else {
+        this.style.height = this.scrollHeight + 'px';
+        this.style.overflowY = 'hidden';
+      }
+    });
+  }
+
+  // 랜딩 입력 
+  const landingInput = document.getElementById('landing-input');
+  const landingSend = document.getElementById('landing-send');
+
+  // 랜딩 자동 높이
+  attachAutoResize(landingInput, 180);
+
+  // Enter=전송 / Shift+Enter=줄바꿈
+  landingInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      startFromLanding();
+    }
+  });
+
+  landingSend.addEventListener('click', startFromLanding);
+
+  function startFromLanding() {
+    const q = landingInput.value.trim();
+    const baseHeight = 55;
+
+    if (!q) return;
+
+    goChatMode();
+
+    // 채팅 입력에 전달하고 전송
+    const inputField = document.getElementById('user-input');
+    inputField.value = q;
+
+    // 채팅 입력 높이도 즉시 반영
+    inputField.dispatchEvent(new Event('input'));
+
+    sendMessage();
+
+    // 랜딩 입력 리셋
+    landingInput.value = '';
+    landingInput.style.height = baseHeight + 'px';
+    landingInput.style.overflowY = 'hidden';
+  }
+
+  // 추천 질문 chip
+  document.querySelectorAll('.chip').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      landingInput.value = btn.getAttribute('data-q') || '';
+      landingInput.dispatchEvent(new Event('input'));
+      startFromLanding();
+    });
+  });
+
+  // 채팅 입력 
+  const inputField = document.getElementById('user-input');
+
+  // 채팅 자동 높이
+  attachAutoResize(inputField, 180);
+
+  // Enter=전송 / Shift+Enter=줄바꿈
+  inputField.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+
+  async function sendMessage() {
+    const sendBtn = document.getElementById('send-btn');
+    const loading = document.getElementById('loading');
+    const baseHeight = 55;
+
+    const question = inputField.value.trim();
+    if (!question) return;
+
+    // 채팅모드로 전환(혹시 랜딩에서 바로 호출될 때 대비)
+    if (chatMode.style.display !== 'flex') goChatMode();
+
+    appendMessage(question, 'user');
+
+    // 입력 리셋
+    inputField.value = '';
+    inputField.style.height = baseHeight + 'px';
+    inputField.style.overflowY = 'hidden';
+    inputField.scrollTop = 0;
+
+    inputField.disabled = true;
+    sendBtn.disabled = true;
+    loading.style.display = 'block';
+
+    try {
+      const response = await fetch('/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg: question })
+      });
+
+      const data = await response.json();
+      appendMessage(data.answer, 'bot');
+    } catch (error) {
+      appendMessage('오류가 발생했습니다.', 'bot');
     }
 
-    function appendMessage(text, className) {
-        const chatBox = document.getElementById('chat-box');
-        const msgDiv = document.createElement('div');
-        msgDiv.className = `message ${className}`;
-        msgDiv.innerText = text;
-        chatBox.appendChild(msgDiv);
-        chatBox.scrollTop = chatBox.scrollHeight; // 스크롤 맨 아래로
-    }
+    inputField.disabled = false;
+    sendBtn.disabled = false;
+    loading.style.display = 'none';
+    inputField.focus();
+  }
+
+  function appendMessage(text, who) {
+    const chatBox = document.getElementById('chat-box');
+
+    const row = document.createElement('div');
+    row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerText = text;
+
+    // ✅ 현재 네 마크업/스타일 기준(아바타 없이 bubble만)
+    row.appendChild(bubble);
+
+    chatBox.appendChild(row);
+
+    const chatScroll = document.getElementById('chatScroll');
+    chatScroll.scrollTop = chatScroll.scrollHeight;
+  }
+
+  // 사이드 메뉴 
+  const menuBtn = document.getElementById('menuBtn');
+  const sideMenu = document.getElementById('sideMenu');
+  const sideOverlay = document.getElementById('sideOverlay');
+  const sideClose = document.getElementById('sideClose');
+
+  function openMenu() {
+    sideMenu.classList.add('open');
+    sideOverlay.classList.add('show');
+    menuBtn.classList.add('is-open');
+    sideMenu.setAttribute('aria-hidden', 'false');
+    sideClose.focus();
+  }
+
+  function closeMenu() {
+    sideMenu.classList.remove('open');
+    sideOverlay.classList.remove('show');
+    menuBtn.classList.remove('is-open');
+    sideMenu.setAttribute('aria-hidden', 'true');
+    menuBtn.focus();
+  }
+
+  function toggleMenu() {
+    if (sideMenu.classList.contains('open')) closeMenu();
+    else openMenu();
+  }
+
+  menuBtn.addEventListener('click', toggleMenu);
+  sideClose.addEventListener('click', closeMenu);
+  sideOverlay.addEventListener('click', closeMenu);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sideMenu.classList.contains('open')) closeMenu();
+  });
+
+  document.querySelectorAll('.side-menu__item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const link = btn.getAttribute('data-link');
+      const routes = {
+        main: 'https://samjungenr.imweb.me/main',
+        about: 'https://samjungenr.imweb.me/aboutus',
+        catalyst: 'https://samjungenr.imweb.me/catalyst',
+        contact: 'https://samjungenr.imweb.me/contact'
+      };
+
+      if (routes[link]) window.location.href = routes[link];
+      closeMenu();
+    });
+  });
 </script>
-
 </body>
 </html>
